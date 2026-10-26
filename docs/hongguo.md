@@ -12,6 +12,8 @@ iOS 红果免费短剧（bundle `com.phoenix.video`，App Store id 6451407032）
 1. **HTTPDNS 裸 IP 直连 + SNI 匹配缺失**：红果用自带 HTTPDNS 把域名解析成 IP 后直连，域名只出现在 TLS SNI 里。v1.1 的规则没带 `extended-matching` 参数（manual.nssurge.com/rules/domain.html："Also match the TLS SNI and the HTTP Host header… This helps when a client connects to an IP address directly"，iOS 5.8.0+），所以匹配不上；主配置 DOMAIN-SET 带了该参数就能靠 SNI 抢走——完美复现实测现象。官方手册同时确认：模块 [Rule] 一律插在主配置规则**最顶部**，模块列表位置只决定模块之间的顺序——「拖到最底下」从来不是问题所在。
 2. **直播广告拉流走「裸 IP + 明文 HTTP + 域名藏路径」暗道**：实测 `http://<IP>/pull-flv-h1.douyincdn.com/third/stream-xxxx_hd5.flv?wsSecret=...`（t_id 时间戳与广告弹出秒级吻合）。连接无域名、无 DNS，域名规则与 [Host] 全部失明；[URL Rewrite] 在 HTTP 层求值、先于规则引擎，是唯一能拦住它的层。
 
+**v1.3（2026-10-26）**：①拉流 kill 升宽匹配——第三形态出现（`IP + /pull-q3.douyincdn.com/stage/`，阿里线路+stage 路径），路径级 narrowing 失效，改为 `pull-(flv|hls|q)[^\/]*\.douyincdn\.com` 双形态任意路径，显式排除 `pull-lls*`（推送通道），代价=本机抖音系直播观看失效；②修埋点域机房坑——`DOMAIN-KEYWORD,-misc.fqnovel.com` 匹配不到 `mon11-misc-lf`（机房后缀夹中间，abclq 警告过的坑），补 `mon*-misc*` / `log*-applog*` / `rtlog*-applog*` 通配（[Rule]+[Host] 双层）。另：实测日志证实模块规则+extended-matching 按 SNI 正常抢先命中（正片白名单生效），模块排序机制无问题。
+
 **v1.2.1 补丁（2026-10-26）**：实测打地鼠序列——裸 IP 形态被杀后 350ms 内 App 改用**域名直连形态**重试（`http://pull-flv-q1.douyincdn.com/third/...`），v1.2 正则只匹配"域名藏路径"形态导致漏杀。修正为 `(?:[^\/]+\/)?pull-flv-[^\/]*\.douyincdn\.com\/third\/` 双形态覆盖。
 
 **v1.2 改动**：

@@ -137,7 +137,10 @@ DOMAIN,i-hl.snssdk.com,REJECT,extended-matching,pre-matching
 DOMAIN,ib-lq.snssdk.com,REJECT,extended-matching,pre-matching
 DOMAIN-KEYWORD,applog.fqnovel.com,REJECT,extended-matching,pre-matching
 DOMAIN-KEYWORD,-misc.fqnovel.com,REJECT,extended-matching,pre-matching
-DOMAIN-WILDCARD,rtlog*-applog-lq.fqnovel.com,REJECT,extended-matching,pre-matching
+# 机房后缀形态（mon11-misc-lf/hl/lq：关键字 -misc.fqnovel.com 匹配不到夹了机房名的形态）
+DOMAIN-WILDCARD,mon*-misc*.fqnovel.com,REJECT,extended-matching,pre-matching
+DOMAIN-WILDCARD,log*-applog*.fqnovel.com,REJECT,extended-matching,pre-matching
+DOMAIN-WILDCARD,rtlog*-applog*.fqnovel.com,REJECT,extended-matching,pre-matching
 # is.snssdk.com 故意放行：交给下方脚本返回无填充信封（断连会触发 SDK 重试）
 #DOMAIN,is.snssdk.com,REJECT
 #DOMAIN,is-lq.snssdk.com,REJECT
@@ -145,16 +148,16 @@ DOMAIN-WILDCARD,rtlog*-applog-lq.fqnovel.com,REJECT,extended-matching,pre-matchi
 #DOMAIN-SUFFIX,hongguosdk.com,REJECT
 
 [URL Rewrite]
-# ── 直播广告拉流 kill（v1.2 核心新增，v1.2.1 修双形态）────────────────────────
-# 实测广告流有两种形态，杀一条它会立刻换另一条重试：
-#   A. 裸 IP + 域名藏路径：http://<IP>/pull-flv-h1.douyincdn.com/third/stream-*.flv
-#   B. 域名直连：http://pull-flv-q1.douyincdn.com/third/stream-*.flv
-# 正则的 (?:[^\/]+\/)? 同时覆盖 A/B；URL Rewrite 在 HTTP 层求值、先于规则引擎，
-# 不受任何规则集压制。只杀 /third/ 第三方流，保抖音正常直播。
-^https?:\/\/(?:[^\/]+\/)?pull-flv-[^\/]*\.douyincdn\.com\/third\/ - reject
-# 升级位（广告改走非 third 路径或 HLS 时逐条启用；全开会影响本机所有抖音系直播观看）：
-#^https?:\/\/(?:[^\/]+\/)?pull-flv-[^\/]*\.douyincdn\.com\/ - reject
-#^https?:\/\/(?:[^\/]+\/)?pull-hls-[^\/]*\.douyincdn\.com\/ - reject
+# ── 直播广告拉流 kill（v1.3 宽匹配：全路径 + 全线路族）────────────────────────
+# 实测广告拉流三形态（杀一条换一条，路径 /third/ /stage/ 都出现过，线路 flv/qN 均有）：
+#   A. http://<IP>/pull-flv-h1.douyincdn.com/third/stream-*.flv（域名藏路径）
+#   B. http://pull-flv-q1.douyincdn.com/third/stream-*.flv（域名直连）
+#   C. http://<IP>/pull-q3.douyincdn.com/stage/stream-*.flv（阿里线路+stage路径）
+# 宽匹配覆盖 pull-flv*/pull-hls*/pull-q* 双形态任意路径；显式不含 pull-lls*（长连接
+# 推送通道，abclq 实测拦了误伤）。代价：本机所有抖音系直播观看会失效（预期内）。
+^https?:\/\/(?:[^\/]+\/)?pull-(?:flv|hls|q)[^\/]*\.douyincdn\.com\/ - reject
+# 最后手段（广告改走 pull-lls 或其他 pull-* 线路时启用；会断字节系消息推送）：
+#^https?:\/\/(?:[^\/]+\/)?pull-[^\/]*\.douyincdn\.com\/ - reject
 # 开屏/活动素材包下发
 ^https?:\/\/gurd\.snssdk\.com\/src\/server\/v\d\/package - reject
 
@@ -195,6 +198,8 @@ activity-ag.awemeughun.com = 127.0.0.1
 dig.bdurl.net = 127.0.0.1
 mon.toutiaocloud.net = 127.0.0.1
 mon.toutiaocloud.com = 127.0.0.1
+mon*-misc*.fqnovel.com = 127.0.0.1
+log*-applog*.fqnovel.com = 127.0.0.1
 mon.zijieapi.com = 127.0.0.1
 applog.zijieapi.com = 127.0.0.1
 i.snssdk.com = 127.0.0.1
