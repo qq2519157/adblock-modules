@@ -12,6 +12,8 @@ iOS 红果免费短剧（bundle `com.phoenix.video`，App Store id 6451407032）
 1. **HTTPDNS 裸 IP 直连 + SNI 匹配缺失**：红果用自带 HTTPDNS 把域名解析成 IP 后直连，域名只出现在 TLS SNI 里。v1.1 的规则没带 `extended-matching` 参数（manual.nssurge.com/rules/domain.html："Also match the TLS SNI and the HTTP Host header… This helps when a client connects to an IP address directly"，iOS 5.8.0+），所以匹配不上；主配置 DOMAIN-SET 带了该参数就能靠 SNI 抢走——完美复现实测现象。官方手册同时确认：模块 [Rule] 一律插在主配置规则**最顶部**，模块列表位置只决定模块之间的顺序——「拖到最底下」从来不是问题所在。
 2. **直播广告拉流走「裸 IP + 明文 HTTP + 域名藏路径」暗道**：实测 `http://<IP>/pull-flv-h1.douyincdn.com/third/stream-xxxx_hd5.flv?wsSecret=...`（t_id 时间戳与广告弹出秒级吻合）。连接无域名、无 DNS，域名规则与 [Host] 全部失明；[URL Rewrite] 在 HTTP 层求值、先于规则引擎，是唯一能拦住它的层。
 
+**v1.2.1 补丁（2026-10-26）**：实测打地鼠序列——裸 IP 形态被杀后 350ms 内 App 改用**域名直连形态**重试（`http://pull-flv-q1.douyincdn.com/third/...`），v1.2 正则只匹配"域名藏路径"形态导致漏杀。修正为 `(?:[^\/]+\/)?pull-flv-[^\/]*\.douyincdn\.com\/third\/` 双形态覆盖。
+
 **v1.2 改动**：
 
 1. 所有活跃 REJECT 与正片 DIRECT 白名单全量追加 `extended-matching`（裸 IP+SNI 场景覆盖；白名单也必须加，否则 REJECT 补齐 SNI 后正片裸 IP 连接会掉进主配置规则被送代理）

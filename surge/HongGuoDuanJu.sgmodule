@@ -145,15 +145,16 @@ DOMAIN-WILDCARD,rtlog*-applog-lq.fqnovel.com,REJECT,extended-matching,pre-matchi
 #DOMAIN-SUFFIX,hongguosdk.com,REJECT
 
 [URL Rewrite]
-# ── 直播广告拉流 kill（v1.2 核心新增）────────────────────────────────────────
-# 实测广告流走「HTTPDNS 解析出的裸 IP + 明文 HTTP + 真实域名藏在路径」：
-#   http://<IP>/pull-flv-h1.douyincdn.com/third/stream-xxxx_hd5.flv?wsSecret=...
-# 域名规则与 [Host] 对此全部失明（连接无域名、无 DNS）；URL Rewrite 在 HTTP 层
-# 求值、先于规则引擎，不受任何规则集压制。先只杀 /third/ 第三方流，保抖音正常直播。
-^https?:\/\/[^\/]+\/pull-flv-[^\/]*\.douyincdn\.com\/third\/ - reject
+# ── 直播广告拉流 kill（v1.2 核心新增，v1.2.1 修双形态）────────────────────────
+# 实测广告流有两种形态，杀一条它会立刻换另一条重试：
+#   A. 裸 IP + 域名藏路径：http://<IP>/pull-flv-h1.douyincdn.com/third/stream-*.flv
+#   B. 域名直连：http://pull-flv-q1.douyincdn.com/third/stream-*.flv
+# 正则的 (?:[^\/]+\/)? 同时覆盖 A/B；URL Rewrite 在 HTTP 层求值、先于规则引擎，
+# 不受任何规则集压制。只杀 /third/ 第三方流，保抖音正常直播。
+^https?:\/\/(?:[^\/]+\/)?pull-flv-[^\/]*\.douyincdn\.com\/third\/ - reject
 # 升级位（广告改走非 third 路径或 HLS 时逐条启用；全开会影响本机所有抖音系直播观看）：
-#^https?:\/\/[^\/]+\/pull-flv-[^\/]*\.douyincdn\.com\/ - reject
-#^https?:\/\/[^\/]+\/pull-hls-[^\/]*\.douyincdn\.com\/ - reject
+#^https?:\/\/(?:[^\/]+\/)?pull-flv-[^\/]*\.douyincdn\.com\/ - reject
+#^https?:\/\/(?:[^\/]+\/)?pull-hls-[^\/]*\.douyincdn\.com\/ - reject
 # 开屏/活动素材包下发
 ^https?:\/\/gurd\.snssdk\.com\/src\/server\/v\d\/package - reject
 
