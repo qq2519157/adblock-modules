@@ -3,6 +3,51 @@
 iOS 红果免费短剧（bundle `com.phoenix.video`，App Store id 6451407032）的去广告 Surge 模块。
 参考 fmz200/wool_scripts 的 FanQieNovel.sgmodule 结构，融合 6 个社区已验证实现并经 iPad 实测校准。
 
+## v1.1 更新日志（2026-10-26）
+
+针对实机反馈「刷几集后仍弹直播商品广告」与「ads3 请求走 DIRECT」的修复：
+
+1. **pre-matching**：所有无白名单冲突的 REJECT 加 `,pre-matching`（DNS/TCP 阶段求值，优先于一切普通规则）——主配置里更宽泛的 snssdk/zijieapi/douyin 直连规则不再能压住模块。故意不加 pre-matching 的：`-ad-sign` 族（与 p3-ad-sign DIRECT 例外冲突）、`ecombdapi` 族（保留用户可覆盖性）。若模块加载报错，全局删掉 `,pre-matching` 后缀即可退回。
+2. **直播带货卡片信令域**（用户实机抓包定位 + abclq/CLQ_Shield/gitlawyercan/anpplex 四源印证）：`webcast*-open*.douyin.com`（含 CNAME 真身 `.c.dsa.cdnbuild.net`）、`webcast-open.douyin.com`、`content-open.douyin.com`、`pangolin*.snssdk.com`。断直播间数据供给，卡片无从渲染；代价=红果内跳真实直播间失效（广告落地页，属预期）。
+3. **信封修复**：v1 的 Map Local `data="{}"` 缺 `status_code`，穿山甲 SDK 视为解析错误≈网络错误→反复重试（"拦不死"嫌疑之一）。改为 app2smile/rules 的 adsense.js 脚本，命中广告（响应含 message 字段）时替换为官方无填充信封 `{status_code:20001, reason:112}`；`is.snssdk.com` 从 REJECT 候选改为放行+脚本接手。
+4. **证书固定情报落地**（gitlawyercan 实测）：`ecombdapi.com`、`ads*.zijieapi.com`、`gecko*.zijieapi.com`、`chengzijianzhan.com`、`ugsdk.cn`、`p*-ad-sign.byteimg.com`、`p*-developer-sign.bytemaimg.com`、`api*-normal-*.fqnovel.com` 均有证书固定。这些域只走域名层 REJECT（TLS 握手前断连，不受 pinning 影响），不做任何 MITM 依赖。
+
+## 直播卡片网络指纹（实机抓包，2026-10-25）
+
+广告爆发簇（同一拍 10 次，插在正片 CDN 请求间隙）：
+
+| 面 | 域名 | 作用 |
+|---|---|---|
+| 信令 | `webcast3-open-hl.douyin.com` / `webcast5-open-hl.douyin.com` | 直播间开放接口（卡片数据源）→ **已拦** |
+| 信令 | `content-open.douyin.com` | 直播内容开放接口 → **已拦** |
+| 信令 | `webcast.amemv.com` | 房间信息（出现 1 次，复现再拦） |
+| 电商 | `isaas5-normal-hl.ecombdapi.com` ×10 | 商品接口（有 pinning，域名层拦） |
+| 图片 | `p3-webcast.douyinpic.com` ×10 | 封面图 → **勿拦**（拦了只白图，杀不死卡片） |
+| 图片 | `p3/p26-item.ecombdimg.com` | 电商图床 → **勿拦**（通用图床） |
+| 正片 | `v5-se2-alismart-reading-video.qznovelvod.com` ×84 | 正片 CDN（白名单保护对象） |
+
+勿拦清单（多源实测误伤）：`p*-webcast.douyinpic.com`（封面白屏）、`pull-lls-*.douyincdn.com`（直播拉流+推送共用）、`webcast5-ws-web-*.douyin.com`（真直播弹幕 WS）、`douyinpic.com`/`ecombdimg.com`（通用图床）、`bytegecko.com`（H5 离线包，白屏风险）、`pitaya.bytedance.com`（播放器配置）、`amemv.com` 裸域（抖音主域）。
+
+## 「3-5 秒才能上划」与镜像秒跳的原理
+
+该门槛是客户端「滑动锁」：广告层挂"5s后可继续上滑"提示（Android 无障碍项目 ad-auto 实测横屏锁期约 12 秒），锁期内触摸手势一律无效，锁一解除滑动立即生效。iPhone 镜像把触控板双指上划作为**指针滚动事件**注入，不走手指触摸的命中测试/遮罩拦截，直接驱动滚动视图翻页——"锁住了手指，没锁住滚动"。跳过动作不做服务端校验。
+
+## 实验分支：内容 API 路径层（默认关闭，灰度序列）
+
+APK 静态提取出的第一方广告/直播卡端点（host `api*-normal-*.fqnovel.com`，iOS 在用性待证）：
+
+- `GET /reading/commerceapi/ad/patch_plan/v2/`、`/reading/commerceapi/ad/delivery_plan/v2/`（广告排期）
+- `POST /reading/playlet/shortbuy_api/get_aigc_to_live_card/v1/`（AIGC→直播卡片）
+- `GET /reading/commerceapi/product/card/v1/`（商品卡）
+- `POST /novel/player/multi_video_detail/v1/`、`multi_video_model(/preload)/v1/`（分集/播放模型，检查广告位字段）
+
+灰度序列（严格按序，任一异常立即回退）：
+1. MITM 只加 `api5-normal-hl.fqnovel.com`（追加到 hostname 行末尾）
+2. 先跑 dump-only 脚本（只 console.log 顶层 key + 含 room_id/webcast/anchor/live 语义的字段，不改写）
+3. 确认响应结构与字段名后，才写正式改写（候选：布尔旗标翻转 / 广告数组清空，套 wool zhihu.js 模式）
+4. 该域承载全部内容 API 且实测有证书固定：黑屏/转圈/断连立即删掉退回纯域名版
+
+
 ## 文件
 
 - `HongGuoDuanJu.sgmodule` — 模块本体

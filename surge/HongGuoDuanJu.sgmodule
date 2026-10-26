@@ -1,28 +1,34 @@
 #!name=红果短剧
-#!desc=拦截穿山甲广告SDK、剧集间贴片、开屏素材包、埋点上报与电商推广位；保留正片/封面/登录/评论/推送。装后需清除红果缓存或重装App才会完全生效！
+#!desc=拦截穿山甲广告SDK、直播带货卡片信令、剧集间贴片、开屏素材包、埋点上报与电商推广位；保留正片/封面/登录/评论/推送。装后需清除红果缓存或重装App才会完全生效！
 #!author=logan
 #!category=去广告
 #!homepage=https://github.com/qq2519157/adblock-modules
 #!raw-url=https://raw.githubusercontent.com/qq2519157/adblock-modules/main/surge/HongGuoDuanJu.sgmodule
-#!date=2026-10-25
+#!date=2026-10-26
 #
-# 规则来源（均已逐条核对原始文件，2026-10-25）：
-#   laincat/Rules HongGuo.sgmodule（正片 DIRECT 白名单设计）
-#   k6nfmm7dbr-commits/hongguo-lite 基础版/Plus 版（Map Local 空响应）
-#   bluee1111/egern-hongguo-adblock（ads*-normal 正则形态）
-#   doovvip HongGuo-Surge-Native V1.1.0（2026-08-31 实机验证）
-#   abclq/home-dns-adblock（安卓无root实抓558域回测）
-#   fmz200/wool_scripts FanQieNovel（番茄系通用拦截面）
-# 实测校准：iPad版(无广告)仍请求 ads3-normal-hl.zijieapi.com，证实无广告=服务端按设备
-# 不填充，域名层拦截路线正确；iOS 实测机房变体 -hl/-lf 均出现，通配已覆盖。
+# v1.1 (2026-10-26)：
+#   1. REJECT 加 pre-matching（DNS/TCP 阶段求值，优先于一切普通规则）——修复被主配置
+#      更宽的 snssdk/zijieapi/douyin 直连规则压住导致 ads3 走 DIRECT 的问题
+#   2. 新增直播带货卡片信令域：webcast*-open*.douyin.com / content-open.douyin.com /
+#      pangolin*.snssdk.com（用户实机抓包定位 + 四个独立上游印证）
+#   3. 删除 Map Local "{}" 空响应（缺 status_code，SDK 视为解析错误→反复重试），
+#      改用 app2smile adsense.js 的穿山甲官方无填充信封（status_code=20001）
+#   4. 证书固定域（ecombdapi/ads*/ugsdk/ad-sign 等）只走域名层 REJECT——REJECT 在
+#      TLS 握手前断连，不受 pinning 影响；不再对它们做任何 MITM 依赖
 #
-# ⚠️ 重要：本模块 [Rule] 会合入主配置规则列表，需排在更宽泛的 snssdk.com / zijieapi.com
-#    直连规则之前才会生效（Surge 自上而下首条命中）。
-# ⚠️ 红果是「免费看剧+广告」模式，拦截后「看广告得金币/解锁」入口可能只等待不解锁
-#    （官方已公告 2026-12-31 前全面下线金币功能，该影响即将消失）。
+# 规则来源（已逐条核对原始文件）：
+#   laincat/Rules · k6nfmm7dbr-commits/hongguo-lite · bluee1111/egern-hongguo-adblock
+#   doovvip HongGuo-Surge-Native V1.1.0 · abclq/home-dns-adblock（安卓实抓558域回测）
+#   anpplex/Surge fanqie.sgmodule · fmz200/wool_scripts · app2smile/rules adsense.js
+# 实测校准：iPad(无广告)仍请求 ads3-normal-hl（服务端按设备不填充）；直播卡片会话指纹
+# =webcast3/5-open-hl.douyin.com + content-open.douyin.com + isaas*-hl.ecombdapi.com ×10。
+#
+# ⚠️ 红果是「免费看剧+广告」模式，拦截后激励类入口可能只等待不解锁（金币功能官方
+#    已公告 2026-12-31 前全面下线，影响将自动消失）。
 
 [Rule]
-# ── 正片保护：必须在本模块所有 REJECT 之前，拦截会导致黑屏/封面缺失 ─────────
+# ── 正片保护：必须在本模块所有普通阶段 REJECT 之前（pre-matching 规则不受此约束，
+#    但其 pattern 均不与以下白名单重叠）────────────────────────────────────────
 # 短剧正片与听书音频 CDN
 DOMAIN-SUFFIX,fqnovelvod.com,DIRECT
 DOMAIN-WILDCARD,v*-reading-video*.qznovelvod.com,DIRECT
@@ -45,25 +51,43 @@ DOMAIN-WILDCARD,lf*-reading*.fqnovelpic.com,DIRECT
 DOMAIN-SUFFIX,hongguo.com,DIRECT
 DOMAIN-SUFFIX,hongguo.douyin.com,DIRECT
 
+# ── 直播带货卡片信令（v1.1 新增主力：断直播间数据供给，卡片无从渲染）────────
+# 直播间开放接口（房间信息/卡片自渲染数据源），用户实抓 + abclq/CLQ_Shield/gitlawyercan/anpplex 四源在拦
+# 注：会把红果内跳转真实直播间一并断掉（那正是广告落地页，属预期）
+DOMAIN-WILDCARD,webcast*-open*.douyin.com,REJECT,pre-matching
+DOMAIN,webcast-open.douyin.com,REJECT,pre-matching
+# CNAME 真身（abclq 实测：只封表层域后 App 会直连此真身绕过）
+DOMAIN-WILDCARD,webcast*-open*.douyin.com.c.dsa.cdnbuild.net,REJECT,pre-matching
+# 抖音直播内容开放接口（与 webcast-open 同族）
+DOMAIN,content-open.douyin.com,REJECT,pre-matching
+# 穿山甲在 snssdk 上的承载域（v2fly domain-list @ads 分组四条）
+DOMAIN-WILDCARD,pangolin*.snssdk.com,REJECT,pre-matching
+# ── 勿拦（多源实测误伤）：p*-webcast.douyinpic.com=封面白屏；pull-lls-*.douyincdn.com=
+# 直播拉流+推送共用；webcast5-ws-web-*.douyin.com=真直播弹幕WS；douyinpic.com/ecombdimg.com=
+# 通用图床；bytegecko.com=H5离线包；pitaya.bytedance.com=播放器配置 ──
+# 可选（实抓出现过一次，复现再启用）：
+#DOMAIN,webcast.amemv.com,REJECT,pre-matching
+#DOMAIN,lf6-webcastcdn-tos-sign.douyinstatic.com,REJECT,pre-matching
+
 # ── 穿山甲 / Pangle 广告 SDK（广告请求与素材核心域）────────────────────────
-DOMAIN-SUFFIX,pangolin-sdk-toutiao.com,REJECT
-DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com,REJECT
-DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com,REJECT
-DOMAIN-SUFFIX,pglstatp-toutiao.com,REJECT
-DOMAIN-SUFFIX,pglstatp-toutiao-b.com,REJECT
-DOMAIN-SUFFIX,pangle.io,REJECT
-DOMAIN-SUFFIX,ad.pangle.cn,REJECT
-DOMAIN-SUFFIX,ad.pangolin.cn,REJECT
+DOMAIN-SUFFIX,pangolin-sdk-toutiao.com,REJECT,pre-matching
+DOMAIN-SUFFIX,pangolin-sdk-toutiao1.com,REJECT,pre-matching
+DOMAIN-SUFFIX,pangolin-sdk-toutiao-b.com,REJECT,pre-matching
+DOMAIN-SUFFIX,pglstatp-toutiao.com,REJECT,pre-matching
+DOMAIN-SUFFIX,pglstatp-toutiao-b.com,REJECT,pre-matching
+DOMAIN-SUFFIX,pangle.io,REJECT,pre-matching
+DOMAIN-SUFFIX,ad.pangle.cn,REJECT,pre-matching
+DOMAIN-SUFFIX,ad.pangolin.cn,REJECT,pre-matching
 
-# ── 红果/番茄系广告投放接口（只拦 ads*-normal 子域，覆盖 -hl/-lf/-lq 机房；
-#    绝不能扩大到整域 zijieapi.com，会误杀正常接口与小游戏）──────────────────
-DOMAIN-WILDCARD,ads*-normal.zijieapi.com,REJECT
-DOMAIN-WILDCARD,ads*-normal-*.zijieapi.com,REJECT
+# ── 红果/番茄系广告投放接口（只拦 ads*-normal 子域，覆盖 -hl/-lf/-lq 机房）────
+DOMAIN-WILDCARD,ads*-normal.zijieapi.com,REJECT,pre-matching
+DOMAIN-WILDCARD,ads*-normal-*.zijieapi.com,REJECT,pre-matching
 # 小游戏推广入口（想保留红果小游戏就注释这两行）
-DOMAIN-WILDCARD,minigame*-normal.zijieapi.com,REJECT
-DOMAIN-WILDCARD,minigame*-normal-*.zijieapi.com,REJECT
+DOMAIN-WILDCARD,minigame*-normal.zijieapi.com,REJECT,pre-matching
+DOMAIN-WILDCARD,minigame*-normal-*.zijieapi.com,REJECT,pre-matching
 
-# ── 广告素材签名图床（p3 已在上方放行，此处实际拦 p6/p9 等）──────────────────
+# ── 广告素材签名图床（普通阶段：p3 已在上方 DIRECT 放行，此处实际拦 p6/p9；
+#    故意不加 pre-matching，避免压掉 p3-ad-sign/p3-tt 的 DIRECT 例外）──────────
 DOMAIN-WILDCARD,p*-ad-sign.byteimg.com,REJECT
 DOMAIN,p3-mgsdk-sign.byteimg.com,REJECT
 DOMAIN,p9-mgsdk-sign.byteimg.com,REJECT
@@ -71,57 +95,58 @@ DOMAIN,p1-luckycatopen.byteimg.com,REJECT
 DOMAIN-WILDCARD,p*-developer-sign.bytemaimg.com,REJECT
 
 # ── 剧集间贴片/插屏广告视频 CDN（只拦 reading-ad；正片 reading-video 已在上方放行）
-DOMAIN-WILDCARD,v*-reading-ad.qznovelvod.com,REJECT
-DOMAIN-WILDCARD,v*-bd-daily-reading-ad.qznovelvod.com,REJECT
-DOMAIN-WILDCARD,v*-se-daily-reading-ad.qznovelvod.com,REJECT
-DOMAIN-WILDCARD,v*-se-sjy-daily-reading-ad.qznovelvod.com,REJECT
-# 正片 CDN 兜底直连：必须放在 reading-ad 拦截之后，否则遮蔽上方广告规则
+DOMAIN-WILDCARD,v*-reading-ad.qznovelvod.com,REJECT,pre-matching
+DOMAIN-WILDCARD,v*-bd-daily-reading-ad.qznovelvod.com,REJECT,pre-matching
+DOMAIN-WILDCARD,v*-se-daily-reading-ad.qznovelvod.com,REJECT,pre-matching
+DOMAIN-WILDCARD,v*-se-sjy-daily-reading-ad.qznovelvod.com,REJECT,pre-matching
+# 正片 CDN 兜底直连：普通阶段兜底，必须放在 reading-ad 拦截之后
 DOMAIN-SUFFIX,qznovelvod.com,DIRECT
 
 # ── 广告/运营配置下发（TNC 心跳与配置；番茄系多源印证）──────────────────────
-DOMAIN,tnc3-alisc1.snssdk.com,REJECT
-DOMAIN,tnc3-aliec2.snssdk.com,REJECT
-DOMAIN,tnc3-alisc1.zijieapi.com,REJECT
-DOMAIN,tnc3-aliec2.zijieapi.com,REJECT
-DOMAIN,tnc0-alisc1.zijieapi.com,REJECT
-DOMAIN,tnc0-aliec2.zijieapi.com,REJECT
+DOMAIN,tnc3-alisc1.snssdk.com,REJECT,pre-matching
+DOMAIN,tnc3-aliec2.snssdk.com,REJECT,pre-matching
+DOMAIN,tnc3-alisc1.zijieapi.com,REJECT,pre-matching
+DOMAIN,tnc3-aliec2.zijieapi.com,REJECT,pre-matching
+DOMAIN,tnc0-alisc1.zijieapi.com,REJECT,pre-matching
+DOMAIN,tnc0-aliec2.zijieapi.com,REJECT,pre-matching
 
-# ── 广告弹窗 / 跳转 / 落地页 ────────────────────────────────────────────────
-DOMAIN,zlink.ugsdk.cn,REJECT
-DOMAIN-SUFFIX,praisewindow.ugsdk.cn,REJECT
-DOMAIN,praisewindow-sinfonlinea.ugsdk.cn,REJECT
-DOMAIN-SUFFIX,chengzijianzhan.com,REJECT
-DOMAIN,activity-ag.awemeughun.com,REJECT
-DOMAIN,dig.bdurl.net,REJECT
+# ── 广告弹窗 / 跳转 / 落地页（gitlawyercan 实测此组均有证书固定，域名层 REJECT
+#    在 TLS 握手前断连，不受 pinning 影响）────────────────────────────────────
+DOMAIN,zlink.ugsdk.cn,REJECT,pre-matching
+DOMAIN-SUFFIX,praisewindow.ugsdk.cn,REJECT,pre-matching
+DOMAIN,praisewindow-sinfonlinea.ugsdk.cn,REJECT,pre-matching
+DOMAIN-SUFFIX,chengzijianzhan.com,REJECT,pre-matching
+DOMAIN,activity-ag.awemeughun.com,REJECT,pre-matching
+DOMAIN,dig.bdurl.net,REJECT,pre-matching
 
-# ── 电商推广位（想用红果内置商城就注释这一段）──────────────────────────────
+# ── 电商推广位（想用红果内置商城就注释这一段；有证书固定，域名层同样有效）────
 DOMAIN-WILDCARD,ecom*-normal*.ecombdapi.com,REJECT
 DOMAIN-WILDCARD,ec*-core*.ecombdapi.com,REJECT
 DOMAIN-WILDCARD,isaas*-normal*.ecombdapi.com,REJECT
 
-# ── 随机子域广告 CDN（安卓无root实抓确认的伪装域名，iOS 侧待观察）───────────
-DOMAIN-SUFFIX,comfylink.com,REJECT
-DOMAIN-SUFFIX,ndcpp.com,REJECT
-DOMAIN-SUFFIX,ydycdn.com,REJECT
-DOMAIN-SUFFIX,qrstuvwxyzab.com,REJECT
-DOMAIN-SUFFIX,wuchuyun.com,REJECT
-DOMAIN-SUFFIX,xinqiucc.com,REJECT
-DOMAIN-SUFFIX,jomoxc.com,REJECT
-DOMAIN-SUFFIX,wmzfylgdsz.com,REJECT
+# ── 随机子域广告 CDN（安卓无root实抓确认的伪装域名）─────────────────────────
+DOMAIN-SUFFIX,comfylink.com,REJECT,pre-matching
+DOMAIN-SUFFIX,ndcpp.com,REJECT,pre-matching
+DOMAIN-SUFFIX,ydycdn.com,REJECT,pre-matching
+DOMAIN-SUFFIX,qrstuvwxyzab.com,REJECT,pre-matching
+DOMAIN-SUFFIX,wuchuyun.com,REJECT,pre-matching
+DOMAIN-SUFFIX,xinqiucc.com,REJECT,pre-matching
+DOMAIN-SUFFIX,jomoxc.com,REJECT,pre-matching
+DOMAIN-SUFFIX,wmzfylgdsz.com,REJECT,pre-matching
 
 # ── 埋点 / 上报（不影响播放；App 功能异常时先注释 i*.snssdk.com 这几行）─────
-DOMAIN,mon.toutiaocloud.net,REJECT
-DOMAIN,mon.toutiaocloud.com,REJECT
-DOMAIN,mon.zijieapi.com,REJECT
-DOMAIN,applog.zijieapi.com,REJECT
-DOMAIN,i.snssdk.com,REJECT
-DOMAIN,i-lq.snssdk.com,REJECT
-DOMAIN,i-hl.snssdk.com,REJECT
-DOMAIN,ib-lq.snssdk.com,REJECT
-DOMAIN-KEYWORD,applog.fqnovel.com,REJECT
-DOMAIN-KEYWORD,-misc.fqnovel.com,REJECT
-DOMAIN-WILDCARD,rtlog*-applog-lq.fqnovel.com,REJECT
-# is.snssdk.com 是否拦截两派说法不一（有实测称是设备注册风控域），默认放行观察：
+DOMAIN,mon.toutiaocloud.net,REJECT,pre-matching
+DOMAIN,mon.toutiaocloud.com,REJECT,pre-matching
+DOMAIN,mon.zijieapi.com,REJECT,pre-matching
+DOMAIN,applog.zijieapi.com,REJECT,pre-matching
+DOMAIN,i.snssdk.com,REJECT,pre-matching
+DOMAIN,i-lq.snssdk.com,REJECT,pre-matching
+DOMAIN,i-hl.snssdk.com,REJECT,pre-matching
+DOMAIN,ib-lq.snssdk.com,REJECT,pre-matching
+DOMAIN-KEYWORD,applog.fqnovel.com,REJECT,pre-matching
+DOMAIN-KEYWORD,-misc.fqnovel.com,REJECT,pre-matching
+DOMAIN-WILDCARD,rtlog*-applog-lq.fqnovel.com,REJECT,pre-matching
+# is.snssdk.com 故意放行（不拦）：交给下方脚本返回无填充信封（断连会触发 SDK 重试）
 #DOMAIN,is.snssdk.com,REJECT
 #DOMAIN,is-lq.snssdk.com,REJECT
 
@@ -132,18 +157,18 @@ DOMAIN-WILDCARD,rtlog*-applog-lq.fqnovel.com,REJECT
 [URL Rewrite]
 # 开屏/活动素材包下发（番茄系社区多源印证）
 ^https?:\/\/gurd\.snssdk\.com\/src\/server\/v\d\/package - reject
-# 广告安装包/渲染图（与正常内容共用图片CDN，默认关闭：解密主图床CPU开销大，想开需把
-# *.pstatp.com *.byteimg.com 加入下方 MITM）
-#^https?:\/\/[^\/]+\.byteimg\.com\/(ad-app-package|web\.business\.image) - reject
-#^https?:\/\/[^\/]+\.(?:pglstatp-toutiao|pstatp)\.com\/(?:obj|img)\/(?:ad-app-package|ad)\/ - reject
 
-[Map Local]
-# 广告请求接口返回空 JSON：reject 断连会被 SDK 当网络错误反复重试，返回合法空响应更干净。
-# 注：若上方 [Rule] 已 REJECT 对应域名，这里不会触发；两段互为兜底（域名段被注释时由此接手）
-^https://[^/]*pangolin-sdk-toutiao[^/]*/api/ad/union/sdk/ data-type=text data="{}" status-code=200 header="Content-Type:application/json"
-^https://[^/]*\.snssdk\.com/api/ad/ data-type=text data="{}" status-code=200 header="Content-Type:application/json"
+[Script]
+# 穿山甲 get_ads「无填充」信封（官方错误码 20001/reason 112，出处 csjplatform.com/supportcenter/5421）
+# v1 曾用 Map Local 返回 {}：缺 status_code，SDK 视为解析错误≈网络错误→反复重试，已废弃
+# 脚本逻辑（app2smile/rules js/adsense.js，MIT，生产验证）：响应含 message 字段=有广告→替换为无填充信封；
+# 已是无填充/空响应→原样放行。is.snssdk.com 保持 DIRECT 由本脚本接手
+HongGuo_AdEnvelope = type=http-response, pattern=^https?:\/\/(?:[^\/]*pangolin-sdk-toutiao[^\/]*|is\.snssdk\.com)\/api\/ad\/, requires-body=true, script-path=https://raw.githubusercontent.com/app2smile/rules/main/js/adsense.js, script-update-interval=86400
 
 [MITM]
-# ⚠️ 若红果出现打不开/一直转圈 = 命中证书固定(pinning)，先删 *.snssdk.com 这一项；
-#    仍不行就删掉整个 [MITM] 段退回纯域名版（纯域名版已能拦掉大头）
-hostname = %APPEND% *.pangolin-sdk-toutiao.com, *.pangolin-sdk-toutiao1.com, *.pangolin-sdk-toutiao-b.com, gurd.snssdk.com, *.snssdk.com
+# ⚠️ 若红果打不开/一直转圈：先删 *.snssdk.com；再不行删掉整个 [MITM] 段退回纯域名版
+#    （域名层含 pre-matching，已覆盖穿山甲/直播卡片/投放域大头，不依赖 MITM）
+hostname = %APPEND% *.pangolin-sdk-toutiao.com, *.pangolin-sdk-toutiao1.com, *.pangolin-sdk-toutiao-b.com, gurd.snssdk.com, is.snssdk.com, *.snssdk.com
+# 实验分支（默认关闭）：内容 API 有证书固定风险（gitlawyercan 实测 UNKNOWN_CA），
+# 开启时把 api5-normal-hl.fqnovel.com 追加到上一行 hostname 末尾（不要写第二个 hostname 行），
+# 灰度序列见 docs/hongguo.md；任一异常立即删掉退回纯域名版
