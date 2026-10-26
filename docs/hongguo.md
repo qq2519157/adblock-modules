@@ -3,7 +3,33 @@
 iOS 红果免费短剧（bundle `com.phoenix.video`，App Store id 6451407032）的去广告 Surge 模块。
 参考 fmz200/wool_scripts 的 FanQieNovel.sgmodule 结构，融合 6 个社区已验证实现并经 iPad 实测校准。
 
-## v1.1 更新日志（2026-10-26）
+## v1.2 更新日志（2026-10-26）
+
+针对「模块置底仍被主配置 China 域名集压制」与「直播广告音视频照播」的根因修复。
+
+**两个根因（官方手册背书）**：
+
+1. **HTTPDNS 裸 IP 直连 + SNI 匹配缺失**：红果用自带 HTTPDNS 把域名解析成 IP 后直连，域名只出现在 TLS SNI 里。v1.1 的规则没带 `extended-matching` 参数（manual.nssurge.com/rules/domain.html："Also match the TLS SNI and the HTTP Host header… This helps when a client connects to an IP address directly"，iOS 5.8.0+），所以匹配不上；主配置 DOMAIN-SET 带了该参数就能靠 SNI 抢走——完美复现实测现象。官方手册同时确认：模块 [Rule] 一律插在主配置规则**最顶部**，模块列表位置只决定模块之间的顺序——「拖到最底下」从来不是问题所在。
+2. **直播广告拉流走「裸 IP + 明文 HTTP + 域名藏路径」暗道**：实测 `http://<IP>/pull-flv-h1.douyincdn.com/third/stream-xxxx_hd5.flv?wsSecret=...`（t_id 时间戳与广告弹出秒级吻合）。连接无域名、无 DNS，域名规则与 [Host] 全部失明；[URL Rewrite] 在 HTTP 层求值、先于规则引擎，是唯一能拦住它的层。
+
+**v1.2 改动**：
+
+1. 所有活跃 REJECT 与正片 DIRECT 白名单全量追加 `extended-matching`（裸 IP+SNI 场景覆盖；白名单也必须加，否则 REJECT 补齐 SNI 后正片裸 IP 连接会掉进主配置规则被送代理）
+2. 新增 `[Host]` DNS 黑洞段（127.0.0.1 权威应答，先于规则引擎、不受 DOMAIN-SET 压制；`*foo.com` 形式覆盖裸域+子域；通配跨横杠合法）
+3. 新增 `[URL Rewrite]` 拉流 kill：先只杀 `pull-flv-*.douyincdn.com/third/`（第三方流），宽匹配升级位注释备用（全开会挡本机所有抖音系直播观看）
+4. 新增 `DOMAIN-KEYWORD,httpdns,REJECT`（Kelee Block_HTTPDNS 先例）断 DNS 旁路，逼 App 回退系统 DNS
+5. 新增白山云节点 `v9-default.tt.x.bsgslb.cn` 试验拦截（广告素材嫌疑；正片异常删该行）
+6. pre-matching 全保留（iOS 5.14+ 支持 DOMAIN-WILDCARD；旧版本对未知参数静默忽略不报错）
+
+**装/测排障清单（重要，缺一步都可能误判模块无效）**：
+
+1. 模块开关在**当前生效 profile** 里必须开启（官方记录过 iCloud 同步清缓存会静默取消模块勾选的 bug）
+2. **手动重装一次模块**：raw.githubusercontent.com 国内直连经常失败，URL 安装的自动更新可能一直静默失败，手机上可能根本不是最新版
+3. 模块页查配置错误（iOS 5.8.1+ 会报确切行号）
+4. 清空「最近请求」→ 杀红果重开触发广告 → 看新记录命中规则（注意 pre-matching REJECT 每条规则每 5 分钟只记一条，没刷出来≠没命中）
+5. Surge DNS/请求日志查 ads3 有无 DNS 查询记录：没有 = HTTPDNS 裸 IP 实锤（v1.2 第 4 条是解法）；有 = 模块没加载，回到 1-3
+
+
 
 针对实机反馈「刷几集后仍弹直播商品广告」与「ads3 请求走 DIRECT」的修复：
 
