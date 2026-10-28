@@ -4,7 +4,7 @@
 #!category=去广告
 #!homepage=https://github.com/qq2519157/adblock-modules
 #!raw-url=https://raw.githubusercontent.com/qq2519157/adblock-modules/main/surge/HongGuoDuanJu.sgmodule
-#!date=2026-10-26
+#!date=2026-10-28
 #
 # v1.2 (2026-10-26)：
 #   1. 全量补 extended-matching（官方参数，同时匹配 TLS SNI 与 HTTP Host 头，专治
@@ -19,6 +19,18 @@
 #   5. 新增白山云节点 v9-default.tt.x.bsgslb.cn 试验拦截（广告素材嫌疑，正片异常即删此行）
 #   注：pre-matching（iOS 5.14+）与 extended-matching（iOS 5.8+）可同写一行；
 #       旧版本对未知参数「静默忽略」不报错（manual.nssurge.com/rules/overview.html）
+#
+# v1.4 (2026-10-28，依据红果 Android 7.4.2.32 官方包反编译实证)：
+#   1. 断 HTTPDNS 旁路补全：dig.zjurl.cn（TTNet 备用 httpdns 域）+ IP-CIDR 101.36.166.16/30
+#      （dig.bdurl.net 硬编码 IP 表，杀裸 IP 直连）+ tnc*-bjlgy* 调度族
+#   2. 新增 .sdp 拉流兜底（RTM 形态，注释实验位）
+#   3. 新增三个注释可选位：sinfonline UG/金币挂件域、zlink.fqnovel.com 短链、
+#      v0-video-cn-private 预览 VOD
+#   4. bsgslb 试验位改判：全 APK 0 命中=纯服务端下发 CDN，保留仅挡素材
+#   5. MITM 路线正式关闭（TTNet Cronet 只信平台信任库，用户 CA 必被拒）
+#
+# v1.3 (2026-10-26)：拉流 kill 升宽匹配（pull-(flv|hls|q) 双形态任意路径，排除 pull-lls）
+#   + 埋点机房坑修复（mon*-misc*/log*-applog*/rtlog*-applog* 通配）
 #
 # v1.1：直播信令域 webcast*-open*/content-open/pangolin*.snssdk + pre-matching + 信封脚本
 # v1.0：域名层（laincat/k6nfmm7dbr/bluee1111/doovvip/abclq 六源融合）
@@ -36,6 +48,10 @@ DOMAIN-WILDCARD,v*-reading-videocdn*.qznovelvod.com,DIRECT,extended-matching
 DOMAIN,n98-v-readingvideo.qznovelvod.com,DIRECT,extended-matching
 DOMAIN-WILDCARD,*-fq-tts.fqnovelvod.com,DIRECT,extended-matching
 DOMAIN-WILDCARD,p*-novel*.byteimg.com,DIRECT,extended-matching
+# 可选：UG/金币挂件域（反编译实证 /ug/widget/get_template 挂件模板走 sinfonline 变体，
+# CoinWidgetTemplateFetcher.java:20）——想连挂件/约读任务一起杀就取消注释；
+# 必须留在 api*-normal 白名单之前才能生效。默认关闭（与商城可关同哲学）
+#DOMAIN-WILDCARD,api*-normal-sinfonline*.fqnovel.com,REJECT,extended-matching
 DOMAIN,p3-ad-sign.byteimg.com,DIRECT,extended-matching
 DOMAIN,p3-tt.byteimg.com,DIRECT,extended-matching
 DOMAIN-WILDCARD,api*-normal.fqnovel.com,DIRECT,extended-matching
@@ -47,7 +63,12 @@ DOMAIN-SUFFIX,hongguo.com,DIRECT,extended-matching
 DOMAIN-SUFFIX,hongguo.douyin.com,DIRECT,extended-matching
 
 # ── 断 HTTPDNS 旁路：逼 App 回退系统 DNS，本模块域名规则与 [Host] 才有机会生效 ──
+# （v1.4 补全：dig.zjurl.cn 为 TTNet 备用 httpdns 域，与 dig.bdurl.net 成对，
+#   证据 mc5/a.java:13 ttnet_prefer_dns_addr）
 DOMAIN-KEYWORD,httpdns,REJECT,extended-matching,pre-matching
+DOMAIN,dig.zjurl.cn,REJECT,extended-matching,pre-matching
+# httpdns 硬编码 IP 表兜底（101.36.166.16-19 恰 4 地址；Android 包实证，iOS 侧待验证）
+IP-CIDR,101.36.166.16/30,REJECT,no-resolve
 
 # ── 直播带货卡片信令（直播间开放接口=卡片数据源；用户实抓+四独立上游印证）────
 DOMAIN-WILDCARD,webcast*-open*.douyin.com,REJECT,extended-matching,pre-matching
@@ -91,6 +112,9 @@ DOMAIN-WILDCARD,v*-bd-daily-reading-ad.qznovelvod.com,REJECT,extended-matching,p
 DOMAIN-WILDCARD,v*-se-daily-reading-ad.qznovelvod.com,REJECT,extended-matching,pre-matching
 DOMAIN-WILDCARD,v*-se-sjy-daily-reading-ad.qznovelvod.com,REJECT,extended-matching,pre-matching
 DOMAIN-SUFFIX,qznovelvod.com,DIRECT,extended-matching
+# 可选：预览 VOD（全 APK 唯一 qznovelvod 代码常量，ParallelWorldPreviewKt 实证，
+# KMP 平行世界/瀑布流预览嫌疑）——默认注释防误伤新功能，正片异常场景外再开
+#DOMAIN,v0-video-cn-private.qznovelvod.com,REJECT,extended-matching
 
 # ── 广告/运营配置下发（TNC）────────────────────────────────────────────────
 DOMAIN,tnc3-alisc1.snssdk.com,REJECT,extended-matching,pre-matching
@@ -99,9 +123,14 @@ DOMAIN,tnc3-alisc1.zijieapi.com,REJECT,extended-matching,pre-matching
 DOMAIN,tnc3-aliec2.zijieapi.com,REJECT,extended-matching,pre-matching
 DOMAIN,tnc0-alisc1.zijieapi.com,REJECT,extended-matching,pre-matching
 DOMAIN,tnc0-aliec2.zijieapi.com,REJECT,extended-matching,pre-matching
+# bjlgy 调度族（dns105 内置表 send_tnc_host_arrays 证实，mc5/a.java:13）
+DOMAIN-WILDCARD,tnc*-bjlgy*.zijieapi.com,REJECT,extended-matching,pre-matching
+DOMAIN-WILDCARD,tnc*-bjlgy*.bytedance.com,REJECT,extended-matching,pre-matching
 
 # ── 广告弹窗 / 跳转 / 落地页（均有证书固定，域名层 REJECT 不受 pinning 影响）────
 DOMAIN,zlink.ugsdk.cn,REJECT,extended-matching,pre-matching
+# 可选：广告短链域（反编译 UrlConfig.java 常量族）——默认注释防误伤分享链
+#DOMAIN,zlink.fqnovel.com,REJECT,extended-matching,pre-matching
 DOMAIN-SUFFIX,praisewindow.ugsdk.cn,REJECT,extended-matching,pre-matching
 DOMAIN,praisewindow-sinfonlinea.ugsdk.cn,REJECT,extended-matching,pre-matching
 DOMAIN-SUFFIX,chengzijianzhan.com,REJECT,extended-matching,pre-matching
@@ -123,7 +152,8 @@ DOMAIN-SUFFIX,xinqiucc.com,REJECT,extended-matching,pre-matching
 DOMAIN-SUFFIX,jomoxc.com,REJECT,extended-matching,pre-matching
 DOMAIN-SUFFIX,wmzfylgdsz.com,REJECT,extended-matching,pre-matching
 
-# ── 白山云字节节点（试验位：广告素材嫌疑；正片播放异常就删掉这一行）──────────
+# ── 白山云字节节点（v1.4 改判：全 APK 0 命中=纯服务端下发 CDN 候选、非代码依赖；
+#    拦截仅挡素材加载，不影响 App 功能；正片异常仍可删）──────────────────────
 DOMAIN,v9-default.tt.x.bsgslb.cn,REJECT,extended-matching,pre-matching
 
 # ── 埋点 / 上报（不影响播放；App 功能异常时先注释 i*.snssdk.com 这几行）─────
@@ -156,6 +186,9 @@ DOMAIN-WILDCARD,rtlog*-applog*.fqnovel.com,REJECT,extended-matching,pre-matching
 # 宽匹配覆盖 pull-flv*/pull-hls*/pull-q* 双形态任意路径；显式不含 pull-lls*（长连接
 # 推送通道，abclq 实测拦了误伤）。代价：本机所有抖音系直播观看会失效（预期内）。
 ^https?:\/\/(?:[^\/]+\/)?pull-(?:flv|hls|q)[^\/]*\.douyincdn\.com\/ - reject
+# .sdp 拉流兜底（RTM 形态，反编译 VideoLiveManager.smali:179585 三判定实证；
+# sdp URL 是否挂 pull-* 域下属推断，实验位默认关闭）：
+#^https?:\/\/(?:[^\/]+\/)?pull-[^\/]*\.douyincdn\.com\/[^?#]*\.sdp - reject
 # 最后手段（广告改走 pull-lls 或其他 pull-* 线路时启用；会断字节系消息推送）：
 #^https?:\/\/(?:[^\/]+\/)?pull-[^\/]*\.douyincdn\.com\/ - reject
 # 开屏/活动素材包下发
@@ -206,6 +239,9 @@ i.snssdk.com = 127.0.0.1
 i-lq.snssdk.com = 127.0.0.1
 i-hl.snssdk.com = 127.0.0.1
 ib-lq.snssdk.com = 127.0.0.1
+dig.zjurl.cn = 127.0.0.1
+tnc*-bjlgy*.zijieapi.com = 127.0.0.1
+tnc*-bjlgy*.bytedance.com = 127.0.0.1
 v9-default.tt.x.bsgslb.cn = 127.0.0.1
 *comfylink.com = 127.0.0.1
 *ndcpp.com = 127.0.0.1
